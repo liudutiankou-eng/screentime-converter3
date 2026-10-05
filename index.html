@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScreenTime Experience Converter</title>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      background-color: #f4f7f6;
+      color: #333;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+      color: #1a1a1a;
+      text-align: center;
+    }
+
+    p.subtitle {
+      font-size: 0.9rem;
+      color: #666;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .input-section {
+      background: #f8f9fa;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    label {
+      font-weight: bold;
+      font-size: 0.95rem;
+    }
+
+    input[type="number"] {
+      width: 80px;
+      padding: 8px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: #fafafa;
+      border: 1px solid #eaeaea;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .card .icon {
+      font-size: 1.8rem;
+      margin-bottom: 4px;
+    }
+
+    .card .value {
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: #e63946;
+    }
+
+    .card .unit {
+      font-size: 0.8rem;
+      color: #777;
+    }
+
+    .chart-container {
+      position: relative;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>失われた自由時間の換算</h1>
+  <p class="subtitle">スマホの使用時間を「得られたはずの体験」に変換します</p>
+
+  <!-- 時間入力エリア -->
+  <div class="input-section">
+    <label for="hoursInput">本日のスマホ使用時間：</label>
+    <input type="number" id="hoursInput" value="4" min="0" max="24" step="0.1">
+    <span>時間</span>
+  </div>
+
+  <!-- 体験価値カード表示 -->
+  <div class="cards-grid">
+    <div class="card">
+      <div class="icon">🎬</div>
+      <div class="value" id="valMovie">2.0</div>
+      <div class="unit">映画（本分）</div>
+    </div>
+    <div class="card">
+      <div class="icon">📚</div>
+      <div class="value" id="valBook">1.3</div>
+      <div class="unit">読書（冊分）</div>
+    </div>
+    <div class="card">
+      <div class="icon">🏃‍♂️</div>
+      <div class="value" id="valRun">40.0</div>
+      <div class="unit">ランニング（km分）</div>
+    </div>
+    <div class="card">
+      <div class="icon">😴</div>
+      <div class="value" id="valSleep">4.0</div>
+      <div class="unit">理想の睡眠（時間分）</div>
+    </div>
+  </div>
+
+  <!-- グラフ表示領域 -->
+  <div class="chart-container">
+    <canvas id="conversionChart"></canvas>
+  </div>
+</div>
+
+<script>
+  // 体験の定義（1単位あたりの所要分）
+  // 1kmを6分（時速10kmペース）として計算
+  const UNITS = {
+    movie: { label: '映画(本)', minutes: 120 },
+    book: { label: '読書(冊)', minutes: 180 },
+    run: { label: '走れた距離(km)', minutes: 6 },
+    sleep: { label: '睡眠(時間)', minutes: 60 }
+  };
+
+  let chartInstance = null;
+
+  // 画面の更新処理
+  function updateData() {
+    const hours = parseFloat(document.getElementById('hoursInput').value) || 0;
+    const totalMinutes = hours * 60;
+
+    // 各単位への換算計算
+    const movieVal = (totalMinutes / UNITS.movie.minutes).toFixed(1);
+    const bookVal = (totalMinutes / UNITS.book.minutes).toFixed(1);
+    const runVal = (totalMinutes / UNITS.run.minutes).toFixed(1);
+    const sleepVal = (totalMinutes / UNITS.sleep.minutes).toFixed(1);
+
+    // テキスト要素の書き換え
+    document.getElementById('valMovie').textContent = movieVal;
+    document.getElementById('valBook').textContent = bookVal;
+    document.getElementById('valRun').textContent = runVal;
+    document.getElementById('valSleep').textContent = sleepVal;
+
+    // グラフデータの更新
+    updateChart([movieVal, bookVal, runVal, sleepVal]);
+  }
+
+  // Chart.js 描画処理
+  function updateChart(dataValues) {
+    const ctx = document.getElementById('conversionChart').getContext('2d');
+
+    if (chartInstance) {
+      chartInstance.destroy(); // 再描画のための破棄
+    }
+
+    chartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['映画(本)', '読書(冊)', '走れた距離(km)', '睡眠(h)'],
+        datasets: [{
+          label: '手に入ったはずの体験数量',
+          data: dataValues,
+          backgroundColor: [
+            'rgba(230, 57, 70, 0.7)',
+            'rgba(69, 123, 157, 0.7)',
+            'rgba(42, 157, 143, 0.7)',
+            'rgba(244, 162, 97, 0.7)'
+          ],
+          borderWidth: 1,
+          borderRadius: 8
+        }]
+      },
+      options: {
+        indexAxis: 'y', // 横棒グラフに設定
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: '体験単位別の同等数値'
+          }
+        },
+        scales: {
+          x: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  // URLパラメータ（?hours=5.5 や ?minutes=330）からの初期値取得処理
+  function initFromURLParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const hoursParam = urlParams.get('hours');
+    const minutesParam = urlParams.get('minutes');
+
+    if (hoursParam !== null) {
+      document.getElementById('hoursInput').value = parseFloat(hoursParam);
+    } else if (minutesParam !== null) {
+      const hoursFromMinutes = (parseFloat(minutesParam) / 60).toFixed(1);
+      document.getElementById('hoursInput').value = hoursFromMinutes;
+    }
+
+    updateData();
+  }
+
+  // イベントリスナーの登録（入力値が変わった時に再計算）
+  document.getElementById('hoursInput').addEventListener('input', updateData);
+
+  // ページ読み込み完了時にURLパラメータを判定して描画
+  window.addEventListener('DOMContentLoaded', initFromURLParams);
+</script>
+
+</body>
+</html>
